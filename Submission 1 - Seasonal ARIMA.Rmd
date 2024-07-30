@@ -1,0 +1,184 @@
+---
+title: 'Submission 1 - Seasonal ARIMA'
+output:
+  html_document: default
+  pdf_document: default
+date: "2024-07-30"
+---
+
+--------------------------------------
+Nama    : Ahmad Syahid Ibnu Syarif
+Satker  : BPS Kota Dumai Provinsi Riau
+--------------------------------------
+
+Overview:
+Pemodelan dilakukan menggunakan metode Seasonal ARIMA. 
+
+Pada Script ini terdapat beberapa package yang digunakan. Dapat diinstall sebelum menjalankan script
+
+```{r}
+##install.packages(c('ggplot2','tseries','forecast','DMwR',"here"))
+```
+
+set directory (bila perlu)
+```{r}
+library(here)
+getwd()
+setwd(here('dataset')) 
+## dapat disesuaikan, setwd() dengan here bisa digunakan jika diluar chunk
+```
+<h3>Load Library</h3><br>
+```{r}
+library(ggplot2)
+library(tseries)
+library(forecast)
+```
+
+<h3>Load Data</h3><br>
+Load Data dan melihat struktur data
+```{r}
+pnmpg_tj<-read.csv("dataset/training_jumlah_penumpang_tj.csv",sep=";")
+head(pnmpg_tj)
+str(pnmpg_tj)
+```
+Load data Auxilary dan meliaht struktur data auxilary
+```{r}
+armd_tj<-read.csv("dataset/jumlah_armada_tj.csv",sep=";")
+pnmpg_lrt<-read.csv("dataset/jumlah_penumpang_lrt.csv",sep=";")
+pnmpg_mrt<-read.csv("dataset/jumlah_penumpang_mrt.csv",sep=";")
+prjln_lrt<-read.csv("dataset/jumlah_perjalanan_lrt.csv",sep=";")
+prjln_mrt<-read.csv("dataset/jumlah_perjalanan_mrt.csv",sep=";")
+
+head(armd_tj)
+head(pnmpg_lrt)
+head(pnmpg_mrt)
+head(prjln_lrt)
+head(prjln_mrt)
+```
+<h3>Combine all data auxilary</h3><br>
+Lima data auxilary yang tersedia memiliki dimensi yang sama. Untuk mempermudah melihat data auxilary, data tersebut digabung menjadi satu dataframe.
+
+```{r}
+data_aux<-armd_tj
+data_aux['pnmpg_lrt']<-pnmpg_lrt['jumlah_penumpang']
+data_aux['pnmpg_mrt']<-pnmpg_mrt['jumlah_penumpang']
+data_aux['prjln_lrt']<-prjln_lrt['jumlah_perjalanan']
+data_aux['prjln_mrt']<-prjln_mrt['jumlah_perjalanan']
+head(data_aux)
+```
+
+<h3>Persiapan Pemodelan</h3><br>
+Untuk analisis time series, perlu ada variabel penujuk waktu, yaitu variabel dengan format 'date'. 
+
+```{r}
+pnmpg_tj$date<-paste(pnmpg_tj$tahun,pnmpg_tj$bulan,"01",sep="-")
+pnmpg_tj$date<-as.Date(as.character(pnmpg_tj$date),format="%Y-%m-%d")
+str(pnmpg_tj)
+```
+Menampilkan plot line chart dari data jumlah penumpang Transjakarta
+```{r}
+ggplot(pnmpg_tj, aes(x=date, y=jumlah_penumpang)) +
+  geom_line()
+```
+Secara visual terlihat bahwa jumlah penumpang Transjakarta mengalami penurunan drastispada masa Pandemi Covid-19 tahun 2020 hingga 2022. Secara visual juga terlihat bahwa data jumlah penumpang transjakarta tidak stasioner. Namun bisa jadi berupa musiman (seasonal).
+
+<h3>Uji Coba Modelling Seasonal ARIMA</h3><br>
+Sebelum uji coba seasonal ARIMA, data harus dikonversi ke dalam format time series dengan function ts()
+```{r}
+tj_ts<-pnmpg_tj[,c("jumlah_penumpang","bulan","tahun")]
+head(tj_ts)
+
+TJ.ts <- ts(tj_ts, frequency = 12, start = c(2015,1), end = c(2023,12))
+class(TJ.ts)
+head(TJ.ts)
+```
+
+Plot data time series
+```{r}
+plot.ts(TJ.ts[,1])
+
+seasonplot(TJ.ts,12,main="Jumlah Penumpang Transjakarta", ylab="Jumlah Penumpang (Orang)",year.labels = TRUE, col=rainbow(18))
+
+monthplot(TJ.ts[,1],ylab="Jumlah Penumpang (Orang)")
+
+boxplot(TJ.ts[,1] ~ cycle(TJ.ts[,1]), xlab = "Month", ylab = "Sebaran Penumpang", main = "Jumlah Penumpang Transjakarta - Boxplot")
+
+```
+
+Sekilas dari grafik terlihat bahwa data seasonal Penumpang Transjakarta tidak homogen. Maka perlu ditransformasi.
+
+<h3>Transformasi data</h3><br>
+```{r}
+log.TJ=log(TJ.ts[,1])
+head(log.TJ)
+plot.ts(log.TJ)
+```
+
+<h3>Training Model</h3><br>
+```{r}
+model1 <- Arima(log.TJ,order=c(0,1,2),seasonal=c(0,1,1))
+model2 <- Arima(log.TJ,order=c(1,1,1),seasonal=c(1,0,1))
+model3 <- Arima(log.TJ,order=c(2,1,2),seasonal=c(1,1,2))
+summary(model1)
+summary(model2)
+summary(model3)
+```
+
+<h3>Print Star Arima</h3><br>
+Function untuk melihat model yang lebih optimal
+```{r}
+printstatarima <- function (x, digits = 4,se=TRUE){
+       if (length(x$coef) > 0) {
+         cat("\nCoefficients:\n")
+         coef <- round(x$coef, digits = digits)
+         if (se && nrow(x$var.coef)) {
+           ses <- rep(0, length(coef))
+           ses[x$mask] <- round(sqrt(diag(x$var.coef)), digits = digits)
+           coef <- matrix(coef, 1, dimnames = list(NULL, names(coef)))
+           coef <- rbind(coef, s.e. = ses)
+           statt <- coef[1,]/ses
+           pval  <- 2*pt(abs(statt), df=length(x$residuals)-1, lower.tail = FALSE)
+           coef <- rbind(coef, t=round(statt,digits=digits),sign.= round(pval ,digits=digits))
+           coef <- t(coef)
+         }
+         print.default(coef, print.gap = 2)
+       }
+     }
+```
+
+<h3>Pengujian dari 3 model</h3>
+```{r}
+printstatarima(model1)
+printstatarima(model2)
+printstatarima(model3)
+```
+Dari hasil pengujian, model yang lebih optimal adalah model2. Terlihat bahwa pada model2, semua dugaan parameternya berpengaruh nyata.
+
+<h3>Forecasting<h3>
+```{r}
+ramalan_arima<-forecast(model2,6)
+ramalan_arima$mean
+```
+```{r}
+plot(ramalan_arima)
+```
+
+Traning model pada bentuk transformasi(log), sehingga hasil peramalan juga dalam bentuk log. Untuk itu perlu ditransformasi kembali untuk mendapatkan hasil peramalan yang riil.
+```{r}
+ramalan<-exp(ramalan_arima$mean)
+ramalan
+ramalan[1:5]
+```
+<h3>Export hasil peramalan</h3><br>
+Hasil peramalan harus diubah kedalam bentuk .csv sesuai format yang dibutuhkan
+
+```{r}
+hasil<- data.frame("id"=c(1:6),"jumlah_penumpang"=round(ramalan))
+hasil
+str(hasil)
+```
+<h3>Export ke CSV<h3>
+```{r}
+write.csv(hasil,"./submission3.csv", row.names = FALSE)
+## hasil yang tertera pada markdown ini adalah hasil percobaan ketiga
+```

@@ -1,0 +1,143 @@
+---
+title: "Submission 2 - Holt Winter"
+output: html_document
+date: "2024-07-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+--------------------------------------
+Nama    : Ahmad Syahid Ibnu Syarif
+Satker  : BPS Kota Dumai Provinsi Riau
+--------------------------------------
+
+Overview:
+Pemodelan dilakukan menggunakan metode Seasonal ARIMA. 
+
+Pada Script ini terdapat beberapa package yang digunakan. Dapat diinstall sebelum menjalankan script
+
+```{r}
+##install.packages(c('ggplot2','tseries','forecast','DMwR',"here"))
+```
+
+set directory (bila perlu)
+```{r}
+library(here)
+getwd()
+## setwd(here('dataset')) 
+## dapat disesuaikan, setwd() dengan here bisa digunakan jika diluar chunk
+```
+
+<h3>Load Library </h3>
+```{r}
+library(ggplot2)
+library(tseries)
+library(forecast)
+```
+
+<h3>Load Data dan melihat struktur data</h3>
+```{r}
+pnmpg_tj<-read.csv("dataset/training_jumlah_penumpang_tj.csv",sep=";")
+head(pnmpg_tj)
+str(pnmpg_tj)
+```
+
+Load data Auxilary dan meliaht struktur data auxilary
+```{r}
+armd_tj<-read.csv("dataset/jumlah_armada_tj.csv",sep=";")
+pnmpg_lrt<-read.csv("dataset/jumlah_penumpang_lrt.csv",sep=";")
+pnmpg_mrt<-read.csv("dataset/jumlah_penumpang_mrt.csv",sep=";")
+prjln_lrt<-read.csv("dataset/jumlah_perjalanan_lrt.csv",sep=";")
+prjln_mrt<-read.csv("dataset/jumlah_perjalanan_mrt.csv",sep=";")
+
+head(armd_tj)
+head(pnmpg_lrt)
+head(pnmpg_mrt)
+head(prjln_lrt)
+head(prjln_mrt)
+```
+<h3>Combine all data auxilary </h3><br>
+Lima data auxilary yang tersedia memiliki dimensi yang sama. Untuk mempermudah melihat data auxilary, data tersebut digabung menjadi satu dataframe.
+
+```{r}
+data_aux<-armd_tj
+data_aux['pnmpg_lrt']<-pnmpg_lrt['jumlah_penumpang']
+data_aux['pnmpg_mrt']<-pnmpg_mrt['jumlah_penumpang']
+data_aux['prjln_lrt']<-prjln_lrt['jumlah_perjalanan']
+data_aux['prjln_mrt']<-prjln_mrt['jumlah_perjalanan']
+head(data_aux)
+```
+
+<h3>Persiapan Pemodelan</h3><br>
+Untuk analisi time series, perlu ada variabel penujuk waktu, yaitu variabel dengan format 'date'. 
+
+```{r}
+pnmpg_tj$date<-paste(pnmpg_tj$tahun,pnmpg_tj$bulan,"01",sep="-")
+pnmpg_tj$date<-as.Date(as.character(pnmpg_tj$date),format="%Y-%m-%d")
+str(pnmpg_tj)
+```
+
+<h3>Menampilkan Grafik</h3><br>
+Menampilkan plot line chart dari data jumlah penumpang Transjakarta
+```{r}
+ggplot(pnmpg_tj, aes(x=date, y=jumlah_penumpang)) +
+  geom_line()
+```
+<br>Secara visual terlihat bahwa jumlah penumpang Transjakarta mengalami penurunan drastispada masa Pandemi Covid-19 tahun 2020 hingga 2022. Secara visual juga terlihat bahwa data jumlah penumpang transjakarta tidak stasioner.
+
+<h3>uji coba Pemodelan Holt Winters</h3>
+<br>Sebelum uji coba Holt Winters, data harus dikonversi ke dalam format time series dengan function ts()
+
+```{r}
+tj_ts<-pnmpg_tj[,c("jumlah_penumpang","bulan","tahun")]
+head(tj_ts)
+
+TJ.ts <- ts(tj_ts, frequency = 12, start = c(2015,1), end = c(2023,12))
+class(TJ.ts)
+head(TJ.ts)
+plot.ts(TJ.ts[,1])
+```
+
+<h3>Transformasi Data</h3><br>
+Dari Grafik terlihat bahwa data tidak stasioner. Oleh karena itu, data harus ditransformasi terlebih dahulu. Setelah ditransformasi, perlu dilihat grafik dekomposisinya.
+```{r}
+log_pnmpg_tj<-log(TJ.ts[,1])
+log_pnmpg_tj
+D<-decompose(log_pnmpg_tj)
+plot(D)
+```
+<h3>Forecasting</h3><br>
+Forecasting (peramalan) menggunakan metode Holt Winters
+```{r}
+forecast1<-HoltWinters(log_pnmpg_tj)
+plot(forecast1)
+```
+
+```{r}
+forecast2 = forecast:::forecast.HoltWinters(forecast1, h=6)
+forecast2$mean
+```
+
+Traning model pada bentuk transformasi(log), sehingga hasil peramalan juga dalam bentuk log. Untuk itu perlu ditransformasi kembali untuk mendapatkan hasil peramalan yang riil.
+```{r}
+ramalan<-exp(forecast2$mean)
+ramalan
+```
+
+<h3>Export hasil peramalan</h3><br>
+Hasil peramalan harus diubah kedalam bentuk .csv sesuai format yang dibutuhkan
+```{r}
+hasil2<- data.frame("id"=c(1:6),"jumlah_penumpang"=round(ramalan))
+hasil2
+str(hasil2)
+```
+
+<h3>Export ke CSV</h3>
+```{r}
+write.csv(hasil2,"./submission4.csv", row.names = FALSE)
+## hasil yang tertera pada markdown ini adalah hasil percobaan keempat
+```
+
